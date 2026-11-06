@@ -39,8 +39,19 @@ export interface MerchProduct {
 
 export type MatchFormat = 'bo1' | 'bo3' | 'bo5';
 
+export type MatchPhase = 'upcoming' | 'live' | 'finished';
+
+export interface MatchMap {
+  map: string;
+  ours: number;
+  theirs: number;
+  inProgress: boolean;
+}
+
 export interface Match {
   id: string;
+  phase: MatchPhase;
+  maps: MatchMap[];
   tournament: string;
   opponent: string;
   tournamentLogo: string;

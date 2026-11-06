@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { faceitGet, parseTeamGuid, RequestError, type Json } from "./faceit.ts";
+import { syncTeamMatches } from "./matchSync.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,12 +39,6 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-class RequestError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-  }
 }
 
 async function sha256Hex(text: string): Promise<string> {
@@ -138,14 +134,12 @@ async function reorderRows(table: unknown, ids: unknown): Promise<Response> {
   return json({ ok: true });
 }
 
-const FACEIT_API = "https://open.faceit.com/data/v4";
 const FACEIT_KEY_NAME = "faceit_api_key";
+const CRON_SECRET_KEY = "cron_secret";
+const ESEA_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+const LIVE_REFRESH_DELAY_MS = 30 * 1000;
 // HLTV 1.0 baseline kills-per-round; rating = KPR / baseline
 const RATING_KPR_BASELINE = 0.679;
-
-type Json = Record<string, any>;
-
-const GUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 const FACEIT_PLAYER_MAP: { local: string; url: string }[] = [
   { local: "Babaklawa", url: "https://www.faceit.com/ru/players/babaKlawa" },
@@ -157,14 +151,6 @@ const FACEIT_PLAYER_MAP: { local: string; url: string }[] = [
 
 function faceitNickFromUrl(url: string): string {
   return decodeURIComponent(/\/players\/([^/?#]+)/.exec(url)?.[1] ?? url);
-}
-
-function parseTeamGuid(...inputs: unknown[]): string {
-  for (const input of inputs) {
-    const match = typeof input === "string" ? GUID_RE.exec(input) : null;
-    if (match) return match[0].toLowerCase();
-  }
-  return "";
 }
 
 function mappedFaceitNick(localNick: string): string | null {
@@ -220,30 +206,6 @@ async function saveEsea(body: Json): Promise<Response> {
     if (error) throw error;
   }
   return json({ ok: true });
-}
-
-async function faceitGet(path: string, apiKey: string): Promise<Json> {
-  const response = await fetch(`${FACEIT_API}${path}`, {
-    headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
-  });
-  if (response.ok) return (await response.json()) as Json;
-
-  const raw = await response.text().catch(() => "");
-  let data: unknown = raw;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    data = raw;
-  }
-  console.error("FACEIT request failed", { path, status: response.status, data });
-  const detail = (data as Json)?.errors?.[0]?.message ?? (data as Json)?.message ?? "";
-  if (response.status === 401 || response.status === 403) {
-    throw new RequestError("FACEIT не принял ключ API. Проверьте ключ в настройках.", 502);
-  }
-  if (response.status === 404) {
-    throw new RequestError(`FACEIT не нашёл данные по запросу ${path.split("?")[0]}. Проверьте ID команды и матчей.`, 502);
-  }
-  throw new RequestError(`FACEIT вернул ошибку (${response.status})${detail ? `: ${detail}` : ""}.`, 502);
 }
 
 async function fetchTeamMatches(teamId: string, playerIds: string[], apiKey: string): Promise<Json[]> {
@@ -429,6 +391,48 @@ async function syncEsea(): Promise<Response> {
   });
 }
 
+async function readSecret(key: string): Promise<string> {
+  const { data, error } = await supabase.from("esea_secrets").select("value").eq("key", key).maybeSingle();
+  if (error) throw error;
+  return String(data?.value ?? "").trim();
+}
+
+async function runStep(label: string, task: () => Promise<unknown>): Promise<void> {
+  try {
+    await task();
+  } catch (error) {
+    console.error(`${label} failed`, error);
+  }
+}
+
+async function runSyncTick(): Promise<void> {
+  try {
+    const apiKey = await readSecret(FACEIT_KEY_NAME);
+    const config = ((await readEseaState("config")) ?? {}) as Json;
+    const teamId = parseTeamGuid(config.teamId);
+    if (!apiKey || !teamId) return;
+
+    await runStep("Синхронизация матчей", () => syncTeamMatches(supabase, apiKey, teamId, "full"));
+    const lastSync = Number(config.lastSync ?? 0);
+    if (config.autoSync === true && Date.now() - lastSync > ESEA_SYNC_INTERVAL_MS) {
+      await runStep("Автообновление статистики ESEA", () => syncEsea());
+    }
+    await new Promise((resolve) => setTimeout(resolve, LIVE_REFRESH_DELAY_MS));
+    await runStep("Обновление live-матчей", () => syncTeamMatches(supabase, apiKey, teamId, "live"));
+  } catch (error) {
+    console.error("Sync tick failed", error);
+  }
+}
+
+async function cronTick(req: Request): Promise<Response> {
+  const expected = await readSecret(CRON_SECRET_KEY);
+  if (expected.length < 20 || req.headers.get("x-cron-secret") !== expected) {
+    throw new RequestError("Доступ запрещён", 403);
+  }
+  EdgeRuntime.waitUntil(runSyncTick());
+  return json({ ok: true, started: true });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -452,6 +456,8 @@ Deno.serve(async (req: Request) => {
       case "reorder":
         await requireAdmin(body.token);
         return await reorderRows(body.table, body.ids);
+      case "cron_tick":
+        return await cronTick(req);
       case "esea_save":
         await requireAdmin(body.token);
         return await saveEsea(body);

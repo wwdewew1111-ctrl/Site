@@ -137,10 +137,6 @@ export function startNewSeason(
   };
 }
 
-export function isSyncDue(config: Pick<EseaConfig, 'autoSync' | 'teamId' | 'lastSync'>, now: number = Date.now()): boolean {
-  return config.autoSync && config.teamId !== '' && now - config.lastSync > AUTO_SYNC_INTERVAL_MS;
-}
-
 const GUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 export function parseTeamId(input: string): string {

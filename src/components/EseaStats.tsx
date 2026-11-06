@@ -6,7 +6,6 @@ import { SectionHeading } from '@/components/ui/SectionHeading';
 import {
   fetchEseaState,
   getActiveSeason,
-  isSyncDue,
   parseMatchId,
   parseTeamId,
   playerKd,
@@ -307,10 +306,6 @@ export function EseaAdminTab() {
     };
   }, []);
 
-  const autoSync = draft?.config.autoSync ?? false;
-  const teamId = draft?.config.teamId ?? '';
-  const lastSync = draft?.config.lastSync ?? 0;
-
   const requireToken = (): string => {
     const token = getAdminToken();
     if (!token) throw new Error('Сессия входа истекла. Войдите в админку снова.');
@@ -352,15 +347,6 @@ export function EseaAdminTab() {
       return applySync(result);
     });
   };
-
-  useEffect(() => {
-    if (!autoSync || teamId === '') return;
-    const timer = window.setInterval(() => {
-      if (!isSyncDue({ autoSync, teamId, lastSync })) return;
-      void run(async () => `Автообновление: ${applySync(await syncEsea(requireToken()))}`);
-    }, 60 * 1000);
-    return () => window.clearInterval(timer);
-  }, [autoSync, teamId, lastSync]);
 
   if (loadError) return <div className="card p-10 text-center text-muted">Не удалось загрузить статистику ESEA. Обновите страницу.</div>;
   if (!draft) return <div className="card p-10 text-center text-muted">Загружаем статистику...</div>;
@@ -497,7 +483,8 @@ export function EseaAdminTab() {
             type="button"
             role="switch"
             aria-checked={draft.config.autoSync}
-            onClick={() => updateConfig({ autoSync: !draft.config.autoSync })}
+            onClick={() => persistAndSync({ ...draft, config: { ...draft.config, autoSync: !draft.config.autoSync } }, false)}
+            disabled={busy}
             className="flex items-center gap-3 text-sm font-medium text-text"
           >
             <span
@@ -511,7 +498,7 @@ export function EseaAdminTab() {
                 }`}
               />
             </span>
-            Авто-обновление ({AUTO_SYNC_INTERVAL_MS / 60000} мин)
+            Авто-обновление на сервере (каждые {AUTO_SYNC_INTERVAL_MS / 60000} мин)
           </button>
           <button type="button" onClick={() => persistAndSync(draft, true)} disabled={busy} className="btn-outline">
             <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />

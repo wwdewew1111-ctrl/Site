@@ -3,7 +3,7 @@ import { CalendarClock, ExternalLink, Shield, Trophy } from 'lucide-react';
 import { useSite } from '@/context/siteStore';
 import { SectionHeading } from '@/components/ui/SectionHeading';
 import { formatMatchDateTime, isMatchFinished, matchUnitLabel, scoreToneClass } from '@/lib/format';
-import type { Match } from '@/types';
+import type { Match, MatchMap, MatchPhase } from '@/types';
 
 type MatchTab = 'active' | 'archive';
 
@@ -16,7 +16,9 @@ export function MatchesSection() {
   const { data } = useSite();
   const [tab, setTab] = useState<MatchTab>('active');
 
-  const visibleMatches = data.matches.filter((match) => (tab === 'archive' ? match.isArchived : !match.isArchived));
+  const visibleMatches = data.matches
+    .filter((match) => (tab === 'archive' ? match.isArchived : !match.isArchived))
+    .sort((a, b) => Number(b.phase === 'live') - Number(a.phase === 'live'));
 
   return (
     <section id="matches" className="scroll-mt-20 py-20 sm:py-28">
@@ -64,13 +66,15 @@ export function MatchesSection() {
 }
 
 function MatchCard({ match }: { match: Match }) {
-  const finished = isMatchFinished(match);
+  const live = match.phase === 'live';
+  const finished = !live && isMatchFinished(match);
 
   return (
     <article className="flex flex-col gap-6 rounded-xl border border-border bg-card p-6 transition duration-300 hover:-translate-y-1 hover:border-accent hover:shadow-[0_18px_40px_-18px_rgba(255,30,30,0.55)]">
       <div className="flex items-center gap-3">
         <LogoBox src={match.tournamentLogo} fallback={<Trophy className="h-5 w-5 text-muted" />} />
-        <p className="min-w-0 text-sm font-semibold uppercase tracking-wider text-accent">{match.tournament}</p>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold uppercase tracking-wider text-accent">{match.tournament}</p>
+        {!match.isArchived && !finished && <PhaseBadge phase={match.phase} />}
       </div>
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
@@ -78,7 +82,7 @@ function MatchCard({ match }: { match: Match }) {
           <LogoBox src={match.teamLogo} fallback={<Shield className="h-5 w-5 text-muted" />} />
           <p className="w-full truncate text-center font-display text-sm text-text">Ka6aHbl</p>
         </div>
-        {finished ? (
+        {finished || live ? (
           <ScoreBlock match={match} />
         ) : (
           <span className="rounded-full border border-border px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted">vs</span>
@@ -88,6 +92,8 @@ function MatchCard({ match }: { match: Match }) {
           <p className="w-full truncate text-center text-sm font-semibold text-text">{match.opponent}</p>
         </div>
       </div>
+
+      {match.maps.length > 0 && <MapResults maps={match.maps} />}
 
       {(match.startsAt || match.streamUrl) && (
         <div className="mt-auto flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
@@ -129,6 +135,43 @@ function ScoreBlock({ match }: { match: Match }) {
         {match.format.toUpperCase()} · {matchUnitLabel(match.format)}
       </p>
     </div>
+  );
+}
+
+function PhaseBadge({ phase }: { phase: MatchPhase }) {
+  if (phase === 'live') {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-red-500/50 bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-red-500">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+        </span>
+        Текущий матч
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 rounded-full border border-border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
+      Предстоящий
+    </span>
+  );
+}
+
+function MapResults({ maps }: { maps: MatchMap[] }) {
+  return (
+    <ul className="grid gap-2 rounded-lg border border-border bg-elevated/50 p-3">
+      {maps.map((map, index) => (
+        <li key={`${map.map}-${index}`} className="flex items-center justify-between gap-3 text-sm">
+          <span className="font-semibold text-text">
+            {map.map}
+            {map.inProgress ? ' · идёт' : ''}
+          </span>
+          <span className={`font-display tabular-nums ${scoreToneClass(map.ours, map.theirs)}`}>
+            {map.ours} : {map.theirs}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -20,6 +20,8 @@ function createBlankMatch(): Match {
     startsAt: '',
     streamUrl: '',
     format: 'bo1',
+    phase: 'upcoming',
+    maps: [],
     teamScore: null,
     opponentScore: null,
     isArchived: false,
@@ -43,8 +45,8 @@ export function MatchesAdmin() {
   return (
     <div>
       <AdminToolbar
-        title="Предстоящие матчи"
-        description="Турнир, дата и время, ссылка на трансляцию и логотипы. Укажите счёт после матча, а завершённые можно отправить в архив."
+        title="Матчи"
+        description="Турнир, дата и время, ссылка на трансляцию и логотипы. Укажите счёт после матча, а завершённые можно отправить в архив. Матчи FACEIT обновляются автоматически."
         action={
           <button type="button" onClick={() => setDraft(createBlankMatch())} className="btn-primary">
             <Plus className="h-4 w-4" />
@@ -76,6 +78,11 @@ export function MatchesAdmin() {
                       <span className="rounded-full border border-border px-2 py-0.5 text-xs font-semibold text-muted">
                         {match.format.toUpperCase()}
                       </span>
+                      {match.phase === 'live' && (
+                        <span className="rounded-full bg-red-500/15 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-red-500">
+                          Текущий матч
+                        </span>
+                      )}
                       {match.isArchived && (
                         <span className="rounded-full bg-elevated px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-muted">
                           В архиве

@@ -1,4 +1,4 @@
-import type { GalleryPhoto, Match, MatchFormat, MerchProduct, NewsItem, Partner, Player, SiteData, SiteSettings, SocialLinks } from '@/types';
+import type { GalleryPhoto, Match, MatchFormat, MatchMap, MatchPhase, MerchProduct, NewsItem, Partner, Player, SiteData, SiteSettings, SocialLinks } from '@/types';
 
 export interface MatchRow {
   id: string;
@@ -13,6 +13,8 @@ export interface MatchRow {
   team_score: number | null;
   opponent_score: number | null;
   is_archived: boolean;
+  phase: MatchPhase;
+  maps: MatchMap[];
 }
 
 export interface NewsRow {
@@ -62,7 +64,7 @@ export interface MerchModeRow {
   mode: SiteData['merch']['mode'];
 }
 
-export const matchToRow = (match: Match): MatchRow => ({
+export const matchToRow = (match: Match): Omit<MatchRow, 'phase' | 'maps'> => ({
   id: match.id,
   tournament: match.tournament,
   opponent: match.opponent,
@@ -90,6 +92,8 @@ export const matchFromRow = (row: MatchRow): Match => ({
   teamScore: row.team_score,
   opponentScore: row.opponent_score,
   isArchived: row.is_archived,
+  phase: row.phase,
+  maps: row.maps,
 });
 
 export const newsToRow = (item: NewsItem): NewsRow => ({ ...item });

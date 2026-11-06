@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { SiteContext, type SiteActions, type SiteContextValue } from './siteStore';
 import { getAdminToken } from '@/lib/adminAuth';
 import { ApiError, deleteRow, fetchSiteData, reorderRows, upsertRow } from '@/lib/siteApi';
+import { supabase } from '@/lib/supabase';
 import {
+  matchFromRow,
   matchToRow,
+  type MatchRow,
   newsToRow,
   photoToRow,
   playerToRow,
@@ -48,6 +51,26 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       active = false;
     };
   }, [loadAttempt]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('public-matches')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const id = String((payload.old as Partial<MatchRow>).id ?? '');
+          if (id) setData((current) => (current ? { ...current, matches: current.matches.filter((m) => m.id !== id) } : current));
+          return;
+        }
+        const row = payload.new as MatchRow;
+        if (typeof row.id !== 'string') return;
+        const match = matchFromRow(row);
+        setData((current) => (current ? { ...current, matches: upsert(current.matches, match) } : current));
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
 
   const retryLoad = useCallback(() => setLoadAttempt((n) => n + 1), []);
 
