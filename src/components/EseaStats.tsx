@@ -54,6 +54,12 @@ function diffClass(diff: number): string {
   return 'text-muted';
 }
 
+function ratingClass(rating: number): string {
+  if (rating < 0.95) return 'text-red-500';
+  if (rating < 1.06) return 'text-muted';
+  return 'text-green-500';
+}
+
 function nextSeasonTag(tag: string): string {
   const match = /S(\d+)/i.exec(tag);
   return match ? `S${Number(match[1]) + 1}` : `${tag}-next`;
@@ -208,7 +214,7 @@ export function EseaPublicSection() {
                             <td className="px-4 py-3 text-right tabular-nums text-text">{playerKd(player).toFixed(2)}</td>
                             <td className="px-4 py-3 text-right tabular-nums text-text">{player.adr.toFixed(1)}</td>
                             <td className="px-4 py-3 text-right tabular-nums text-text">{player.hsPercent.toFixed(1)}%</td>
-                            <td className="px-4 py-3 text-right font-display tabular-nums text-accent">{player.rating.toFixed(2)}</td>
+                            <td className={`px-4 py-3 text-right font-display tabular-nums ${ratingClass(player.rating)}`}>{player.rating.toFixed(2)}</td>
                           </tr>
                         );
                       })}
