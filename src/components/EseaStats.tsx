@@ -3,6 +3,7 @@ import { ExternalLink, Plus, RefreshCw, Save, Trophy } from 'lucide-react';
 import { getAdminToken } from '@/lib/adminAuth';
 import { ApiError } from '@/lib/siteApi';
 import { SectionHeading } from '@/components/ui/SectionHeading';
+import { EseaSyncCountdown } from '@/components/EseaSyncCountdown';
 import {
   fetchEseaState,
   getActiveSeason,
@@ -505,6 +506,8 @@ export function EseaAdminTab() {
             СИНХРОНИЗИРОВАТЬ СЕЗОН
           </button>
         </div>
+
+        <EseaSyncCountdown autoSync={draft.config.autoSync} lastSync={draft.config.lastSync} />
 
         <div className="space-y-2">
           <span className="label">Быстрый импорт матча</span>
