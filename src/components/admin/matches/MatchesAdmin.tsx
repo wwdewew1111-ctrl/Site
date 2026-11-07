@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Archive, ArchiveRestore, ImageIcon, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useSite } from '@/context/siteStore';
 import { createId, isMatchFinished } from '@/lib/format';
+import { DEFAULT_TEAM_LOGO } from '@/lib/teamLogo';
 import { Modal } from '@/components/ui/Modal';
 import { AdminToolbar } from '@/components/admin/AdminToolbar';
 import { SortableList } from '@/components/admin/SortableList';
@@ -69,7 +70,7 @@ export function MatchesAdmin() {
                 <div className="flex items-start gap-4">
                   <div className="flex shrink-0 gap-2">
                     <LogoPreview src={match.tournamentLogo} />
-                    <LogoPreview src={match.teamLogo} />
+                    <LogoPreview src={match.teamLogo || DEFAULT_TEAM_LOGO} />
                     <LogoPreview src={match.opponentLogo} />
                   </div>
                   <div className="min-w-0 flex-1">

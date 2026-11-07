@@ -3,6 +3,7 @@ import { CalendarClock, ExternalLink, Shield, Trophy } from 'lucide-react';
 import { useSite } from '@/context/siteStore';
 import { SectionHeading } from '@/components/ui/SectionHeading';
 import { formatMatchDateTime, isMatchFinished, matchUnitLabel, scoreToneClass } from '@/lib/format';
+import { DEFAULT_TEAM_LOGO } from '@/lib/teamLogo';
 import type { Match, MatchMap, MatchPhase } from '@/types';
 
 type MatchTab = 'active' | 'archive';
@@ -79,7 +80,7 @@ function MatchCard({ match }: { match: Match }) {
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <div className="flex min-w-0 flex-col items-center gap-2">
-          <LogoBox src={match.teamLogo} fallback={<Shield className="h-5 w-5 text-muted" />} />
+          <LogoBox src={match.teamLogo || DEFAULT_TEAM_LOGO} fallback={<Shield className="h-5 w-5 text-muted" />} />
           <p className="w-full truncate text-center font-display text-sm text-text">Ka6aHbl</p>
         </div>
         {finished || live ? (
