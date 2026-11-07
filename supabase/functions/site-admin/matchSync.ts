@@ -52,8 +52,8 @@ async function refreshMatch(db: SupabaseClient, apiKey: string, teamId: string, 
 
   const teams = (details.teams ?? {}) as Record<string, Json | undefined>;
   const factions = [teams.faction1, teams.faction2].filter((faction): faction is Json => Boolean(faction));
-  const opponent = factions.find((faction) => faction.team_id !== teamId);
-  if (!opponent || !factions.some((faction) => faction.team_id === teamId)) {
+  const opponent = factions.find((faction) => faction.faction_id !== teamId);
+  if (!opponent || !factions.some((faction) => faction.faction_id === teamId)) {
     console.error("FACEIT match does not include our team", { matchId });
     return;
   }
@@ -90,30 +90,64 @@ async function refreshMatch(db: SupabaseClient, apiKey: string, teamId: string, 
   if (error) throw error;
 }
 
-async function matchIds(db: SupabaseClient, phases?: Phase[]): Promise<string[]> {
-  const query = db.from("matches").select("id");
-  const { data, error } = phases ? await query.in("phase", phases) : await query;
+const FACEIT_MATCH_ID_RE = /^1-[0-9a-f-]{36}$/i;
+const CHAMPIONSHIP_PAGE_SIZE = 100;
+const CHAMPIONSHIP_MAX_PAGES = 5;
+
+async function trackedMatchIds(db: SupabaseClient, phases: Phase[]): Promise<string[]> {
+  const { data, error } = await db.from("matches").select("id").in("phase", phases);
   if (error) throw error;
   return (data ?? []).map((row) => String(row.id));
 }
 
-async function teamMatchIds(teamId: string, apiKey: string, type: "upcoming" | "ongoing" | "past"): Promise<string[]> {
-  const page = await faceitGet(`/teams/${encodeURIComponent(teamId)}/matches?type=${type}&offset=0&limit=20`, apiKey);
-  const items = (Array.isArray(page.items) ? page.items : []) as Json[];
-  return items.map((item) => item.match_id).filter((id): id is string => typeof id === "string");
+async function championshipIdOf(matchId: string, apiKey: string): Promise<string | null> {
+  const details = await faceitGet(`/matches/${encodeURIComponent(matchId)}`, apiKey);
+  if (details.competition_type !== "championship" || typeof details.competition_id !== "string") return null;
+  return details.competition_id;
 }
 
-async function scheduledMatchIds(db: SupabaseClient, teamId: string, apiKey: string): Promise<string[]> {
-  const known = new Set(await matchIds(db));
-  const upcoming = await teamMatchIds(teamId, apiKey, "upcoming");
-  const ongoing = await teamMatchIds(teamId, apiKey, "ongoing");
-  const past = (await teamMatchIds(teamId, apiKey, "past")).filter((id) => !known.has(id));
-  const tracked = await matchIds(db, ["upcoming", "live"]);
-  return [...new Set([...upcoming, ...ongoing, ...past, ...tracked])];
+async function championshipTeamMatchIds(
+  championshipId: string,
+  teamId: string,
+  apiKey: string,
+  type: "upcoming" | "ongoing",
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (let page = 0; page < CHAMPIONSHIP_MAX_PAGES; page++) {
+    const offset = page * CHAMPIONSHIP_PAGE_SIZE;
+    const response = await faceitGet(
+      `/championships/${encodeURIComponent(championshipId)}/matches?type=${type}&offset=${offset}&limit=${CHAMPIONSHIP_PAGE_SIZE}`,
+      apiKey,
+    );
+    const items = (Array.isArray(response.items) ? response.items : []) as Json[];
+    for (const item of items) {
+      const teams = (item.teams ?? {}) as Record<string, Json | undefined>;
+      const ourTeamPlays = [teams.faction1, teams.faction2].some((faction) => faction?.faction_id === teamId);
+      if (ourTeamPlays && typeof item.match_id === "string") ids.push(item.match_id);
+    }
+    if (items.length < CHAMPIONSHIP_PAGE_SIZE) break;
+  }
+  return ids;
 }
 
-export async function syncTeamMatches(db: SupabaseClient, apiKey: string, teamId: string, mode: SyncMode): Promise<void> {
-  const ids = mode === "live" ? await matchIds(db, ["live"]) : await scheduledMatchIds(db, teamId, apiKey);
+async function scheduledMatchIds(db: SupabaseClient, teamId: string, apiKey: string, anchorMatchIds: string[]): Promise<string[]> {
+  const tracked = await trackedMatchIds(db, ["upcoming", "live"]);
+  const anchor = anchorMatchIds.find((id) => FACEIT_MATCH_ID_RE.test(id));
+  const championshipId = anchor ? await championshipIdOf(anchor, apiKey) : null;
+  if (!championshipId) return tracked;
+  const upcoming = await championshipTeamMatchIds(championshipId, teamId, apiKey, "upcoming");
+  const ongoing = await championshipTeamMatchIds(championshipId, teamId, apiKey, "ongoing");
+  return [...new Set([...upcoming, ...ongoing, ...tracked])];
+}
+
+export async function syncTeamMatches(
+  db: SupabaseClient,
+  apiKey: string,
+  teamId: string,
+  mode: SyncMode,
+  anchorMatchIds: string[] = [],
+): Promise<void> {
+  const ids = mode === "live" ? await trackedMatchIds(db, ["live"]) : await scheduledMatchIds(db, teamId, apiKey, anchorMatchIds);
   for (const id of ids) {
     try {
       await refreshMatch(db, apiKey, teamId, id);

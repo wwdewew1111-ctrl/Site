@@ -412,7 +412,8 @@ async function runSyncTick(): Promise<void> {
     const teamId = parseTeamGuid(config.teamId);
     if (!apiKey || !teamId) return;
 
-    await runStep("Синхронизация матчей", () => syncTeamMatches(supabase, apiKey, teamId, "full"));
+    const anchorMatchIds = Array.isArray(config.extraMatchIds) ? config.extraMatchIds.map(String) : [];
+    await runStep("Синхронизация матчей", () => syncTeamMatches(supabase, apiKey, teamId, "full", anchorMatchIds));
     const lastSync = Number(config.lastSync ?? 0);
     if (config.autoSync === true && Date.now() - lastSync > ESEA_SYNC_INTERVAL_MS) {
       await runStep("Автообновление статистики ESEA", () => syncEsea());
